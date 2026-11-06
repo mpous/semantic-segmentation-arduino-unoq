@@ -1,0 +1,63 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f4f6f7;
+  color: #1f2a30;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #008184;
+  color: #fff;
+}
+
+h1 { margin: 0; font-size: 20px; font-weight: 600; }
+h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+
+.status { font-size: 13px; padding: 4px 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.2); }
+.status.online::before { content: "● "; color: #7cf29c; }
+.status.offline::before { content: "● "; color: #ffb3b3; }
+
+main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+.views { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+
+figure { margin: 0; background: #fff; border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+figcaption { font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+figure img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #111; border-radius: 4px; display: block; }
+
+.legend { font-weight: 400; font-size: 13px; color: #555; }
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
+  background: rgb(230, 40, 60); opacity: 0.7; border-radius: 2px; }
+
+.panel {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.stats { display: flex; gap: 24px; }
+.stats span { display: block; font-size: 28px; font-weight: 600; }
+small { color: #5f6b70; font-size: 12px; }
+
+.bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bar { height: 10px; background: #e3e7e9; border-radius: 5px; overflow: hidden; margin-bottom: 4px; }
+.bar > div { height: 100%; width: 0; transition: width 0.2s; }
+.bar .ok { background: #2bb673; }
+.bar .warn { background: #f2a93b; }
+.bar .bad { background: #e6283c; }
+
+.threshold label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.threshold input { width: 100%; accent-color: #008184; }
+
+.model { grid-column: 1 / -1; margin: 0; font-size: 12px; color: #5f6b70; }

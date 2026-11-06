@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Segmentation viewer</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Segmentation viewer</h1>
+      <span id="status" class="status offline">Connecting…</span>
+    </header>
+
+    <main>
+      <div class="views">
+        <figure>
+          <figcaption>Camera</figcaption>
+          <img id="camera" alt="Camera image" />
+        </figure>
+        <figure>
+          <figcaption>Segmentation <span class="legend"><i></i>obstacle</span></figcaption>
+          <img id="mask" alt="Obstacle mask over the camera image" />
+        </figure>
+      </div>
+
+      <section class="panel">
+        <div class="stats">
+          <div><span id="inference">–</span><small>inference ms</small></div>
+          <div><span id="fps">–</span><small>fps</small></div>
+          <div><span id="obstacle">–</span><small>obstacle</small></div>
+        </div>
+
+        <div class="free">
+          <h2>Free floor near the robot</h2>
+          <div class="bars">
+            <div><div class="bar"><div id="free-0"></div></div><small>left <b id="free-0-v">–</b></small></div>
+            <div><div class="bar"><div id="free-1"></div></div><small>centre <b id="free-1-v">–</b></small></div>
+            <div><div class="bar"><div id="free-2"></div></div><small>right <b id="free-2-v">–</b></small></div>
+          </div>
+        </div>
+
+        <div class="threshold">
+          <label for="threshold">Obstacle threshold <b id="threshold-v">0.50</b></label>
+          <input id="threshold" type="range" min="0.05" max="0.95" step="0.05" value="0.5" />
+          <small>Lower marks a cell obstacle sooner (more cautious).</small>
+        </div>
+
+        <p id="model" class="model"></p>
+      </section>
+    </main>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="libs/arduino.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

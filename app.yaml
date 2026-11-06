@@ -1,0 +1,5 @@
+name: Segmentation Viewer
+icon: 🧭
+description: "Live floor / obstacle segmentation: the camera image next to the predicted mask"
+bricks:
+  - arduino:web_ui
