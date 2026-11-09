@@ -19,8 +19,8 @@
           <img id="camera" alt="Camera image" />
         </figure>
         <figure>
-          <figcaption>Segmentation <span class="legend"><i></i>obstacle</span></figcaption>
-          <img id="mask" alt="Obstacle mask over the camera image" />
+          <figcaption>Segmentation <span id="legend" class="legend"></span></figcaption>
+          <img id="mask" alt="Predicted classes over the camera image" />
         </figure>
       </div>
 
@@ -28,11 +28,16 @@
         <div class="stats">
           <div><span id="inference">–</span><small>inference ms</small></div>
           <div><span id="fps">–</span><small>fps</small></div>
-          <div><span id="obstacle">–</span><small>obstacle</small></div>
+          <div><span id="objects">–</span><small>not background</small></div>
+        </div>
+
+        <div class="coverage">
+          <h2>Share of the image</h2>
+          <div id="coverage"></div>
         </div>
 
         <div class="free">
-          <h2>Free floor near the robot</h2>
+          <h2>Free <span id="background">background</span> near the camera</h2>
           <div class="bars">
             <div><div class="bar"><div id="free-0"></div></div><small>left <b id="free-0-v">–</b></small></div>
             <div><div class="bar"><div id="free-1"></div></div><small>centre <b id="free-1-v">–</b></small></div>
@@ -41,9 +46,9 @@
         </div>
 
         <div class="threshold">
-          <label for="threshold">Obstacle threshold <b id="threshold-v">0.50</b></label>
+          <label for="threshold">Class threshold <b id="threshold-v">0.50</b></label>
           <input id="threshold" type="range" min="0.05" max="0.95" step="0.05" value="0.5" />
-          <small>Lower marks a cell obstacle sooner (more cautious).</small>
+          <small>A cell gets a class once the classes but the background together reach this probability. Lower is more cautious.</small>
         </div>
 
         <p id="model" class="model"></p>

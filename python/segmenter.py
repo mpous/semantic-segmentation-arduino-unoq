@@ -1,23 +1,78 @@
-"""Runs the floor / obstacle segmentation model and draws its mask.
+"""Runs the semantic segmentation model and draws its mask.
 
 The model comes from the Edge Impulse custom learning block
 (model_quantized_int8_io.tflite or model.tflite). Its output is
-1 x H/8 x W/8 x classes softmax: channel 0 = floor, channel 1 = obstacle.
-The Edge Impulse runner would merge the cells into boxes, so the tensor is
-read directly with LiteRT here.
+1 x H/8 x W/8 x classes softmax: channel 0 = the background (the labeler's
+default class), then one channel per Studio label in Studio's order. The
+tflite file doesn't carry the names, so they come from the block's
+metrics.json (or a labels.txt) next to the model. The Edge Impulse runner
+would merge the cells into boxes, so the tensor is read directly with
+LiteRT here. Used by the App Lab app (main.py) and the upload app.
 """
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
-from ai_edge_litert.interpreter import Interpreter
 
-OBSTACLE_BGR = np.array((60, 40, 230), np.float32)  # red
+try:
+    from ai_edge_litert.interpreter import Interpreter
+except ImportError:  # some ai-edge-litert wheels don't load on macOS; TensorFlow has the same interpreter
+    try:
+        from tensorflow.lite import Interpreter
+    except ImportError:
+        raise ImportError("Install ai-edge-litert (or tensorflow) to run the model") from None
+
+# RGB for the shown classes in order (the ignore channel is skipped); the
+# background is left clear. Same palette as the learning block's scripts/visualize.py.
+PALETTE = [(230, 40, 60), (250, 200, 30), (40, 120, 230), (60, 200, 90), (200, 60, 220),
+           (250, 130, 30), (30, 210, 210), (150, 90, 40), (250, 120, 180), (120, 120, 250)]
 ALPHA = 0.5
 NEAR_ROWS = 0.3  # bottom share of the grid used for the free-space readout
+
+
+@dataclass
+class Classes:
+    """Output channel names. ``ignore``: the channel the block never trains, if any."""
+    names: list[str]
+    ignore: int | None = None
+    source: str = "default"
+
+    @property
+    def foreground(self) -> list[int]:
+        """Channels that can be predicted, except the background."""
+        return [i for i in range(1, len(self.names)) if i != self.ignore]
+
+    def colour(self, channel: int) -> tuple[int, int, int]:
+        return PALETTE[self.foreground.index(channel) % len(PALETTE)]
+
+    def legend(self) -> list[dict]:
+        return [{"channel": i, "name": self.names[i], "colour": "#%02x%02x%02x" % self.colour(i)}
+                for i in self.foreground]
+
+
+def load_classes(models_dir: Path, channels: int) -> Classes:
+    """Channel names from metrics.json (the learning block's report) or labels.txt
+    (one name per line, channel 0 first), else placeholders."""
+    metrics, labels = models_dir / "metrics.json", models_dir / "labels.txt"
+    names, ignore_name, source = None, "ignore", "default"
+    if metrics.is_file():
+        report = json.loads(metrics.read_text())
+        names, ignore_name, source = report.get("channels"), report.get("ignore"), metrics.name
+    elif labels.is_file():
+        names = [line.strip() for line in labels.read_text().splitlines() if line.strip()]
+        source = labels.name
+    if names is not None and len(names) != channels:
+        print(f"{source} lists {len(names)} classes but the model has {channels} outputs; ignoring it", flush=True)
+        names = None
+    if names is None:
+        names, source = ["background", *[f"class {i}" for i in range(1, channels)]], "default"
+    ignore = names.index(ignore_name) if ignore_name in names[1:] else None
+    return Classes(list(names), ignore, source)
 
 
 class Segmenter:
@@ -54,26 +109,40 @@ class Segmenter:
         return y.astype(np.float32)
 
 
-def obstacle_mask(probs: np.ndarray, threshold: float) -> np.ndarray:
-    """(rows, cols) bool: obstacle wherever its probability reaches the threshold."""
-    return probs[..., 1] >= threshold
+def class_map(probs: np.ndarray, classes: Classes, threshold: float) -> np.ndarray:
+    """(rows, cols) channel per cell: the most likely class but the background
+    wherever those classes together reach the threshold, else 0 (background)."""
+    fg = classes.foreground
+    if not fg:
+        return np.zeros(probs.shape[:2], np.int32)
+    p = probs[..., fg]
+    return np.where(p.sum(-1) >= threshold, np.asarray(fg)[p.argmax(-1)], 0).astype(np.int32)
 
 
-def free_space(mask: np.ndarray) -> list[float]:
-    """Share of floor in the left, centre and right thirds of the rows nearest the robot."""
-    near = mask[-max(1, round(mask.shape[0] * NEAR_ROWS)):]
-    return [float(1 - part.mean()) for part in np.array_split(near, 3, axis=1)]
+def coverage(cmap: np.ndarray, classes: Classes) -> dict[str, float]:
+    """Share of cells per class, background included."""
+    return {classes.names[i]: float(np.mean(cmap == i)) for i in [0, *classes.foreground]}
 
 
-def draw_mask(frame_bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """The frame with obstacle cells in red and the output grid on top."""
+def free_space(cmap: np.ndarray) -> list[float]:
+    """Share of background in the left, centre and right thirds of the rows nearest the camera."""
+    near = cmap[-max(1, round(cmap.shape[0] * NEAR_ROWS)):] == 0
+    return [float(part.mean()) for part in np.array_split(near, 3, axis=1)]
+
+
+def draw_mask(frame_bgr: np.ndarray, cmap: np.ndarray, classes: Classes, near_line: bool = True) -> np.ndarray:
+    """The frame with each class's cells in its colour and the output grid on top."""
     h, w = frame_bgr.shape[:2]
-    up = cv2.resize(mask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+    up = cv2.resize(cmap.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
 
     out = frame_bgr.astype(np.float32)
-    out[up] = (1 - ALPHA) * out[up] + ALPHA * OBSTACLE_BGR
+    for ch in classes.foreground:
+        m = up == ch
+        if m.any():
+            r, g, b = classes.colour(ch)
+            out[m] = (1 - ALPHA) * out[m] + ALPHA * np.array((b, g, r), np.float32)
 
-    rows, cols = mask.shape
+    rows, cols = cmap.shape
     for r in range(1, rows):
         y = r * h // rows
         out[y] = out[y] * 0.75 + 255 * 0.25
@@ -81,7 +150,7 @@ def draw_mask(frame_bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
         x = c * w // cols
         out[:, x] = out[:, x] * 0.75 + 255 * 0.25
 
-    # Line marking the rows used for the free-space readout
-    y = h - round(rows * NEAR_ROWS) * h // rows
-    cv2.line(out, (0, y), (w - 1, y), (255, 255, 255), 1, cv2.LINE_AA)
+    if near_line:  # rows used for the free-space readout
+        y = h - round(rows * NEAR_ROWS) * h // rows
+        cv2.line(out, (0, y), (w - 1, y), (255, 255, 255), 1, cv2.LINE_AA)
     return out.astype(np.uint8)
