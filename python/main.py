@@ -1,4 +1,4 @@
-"""Segmentation viewer: camera on the left, floor / obstacle mask on the right."""
+"""Segmentation viewer: camera on the left, the predicted mask on the right."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from arduino.app_peripherals.camera import Camera
 from arduino.app_utils import App
 from arduino.app_utils.image import compress_to_jpeg
 
-from segmenter import Segmenter, draw_mask, free_space, obstacle_mask
+from segmenter import Segmenter, class_map, coverage, draw_mask, free_space, load_classes
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 JPEG_QUALITY = 70
@@ -29,8 +29,11 @@ def find_model() -> Path:
 
 model_path = find_model()
 seg = Segmenter(model_path)
+classes = load_classes(MODELS_DIR, seg.classes)
 print(f"Model {model_path.name}: input {seg.width}x{seg.height}x{seg.channels}, "
       f"output {seg.cols}x{seg.rows}x{seg.classes}", flush=True)
+print(f"Classes ({classes.source}): {', '.join(classes.names)}"
+      + (f"; {classes.names[classes.ignore]} not shown" if classes.ignore is not None else ""), flush=True)
 
 settings = {"threshold": 0.5}
 clients = set()
@@ -42,7 +45,8 @@ camera = Camera(resolution=(640, 480), fps=10)
 
 def settings_message():
     return {**settings, "model": model_path.name, "input": f"{seg.width}x{seg.height}",
-            "grid": f"{seg.cols}x{seg.rows}"}
+            "grid": f"{seg.cols}x{seg.rows}", "background": classes.names[0], "classes": classes.legend(),
+            "names_from": classes.source}
 
 
 def on_connect(sid):
@@ -84,9 +88,9 @@ def loop():
         probs = seg.probabilities(frame)
         inference_ms = (time.perf_counter() - start) * 1000
 
-        mask = obstacle_mask(probs, settings["threshold"])
+        cmap = class_map(probs, classes, settings["threshold"])
         camera_jpeg = jpeg_base64(frame)
-        mask_jpeg = jpeg_base64(draw_mask(frame, mask))
+        mask_jpeg = jpeg_base64(draw_mask(frame, cmap, classes))
     except Exception as e:
         print(f"Frame failed: {e}", flush=True)
         return
@@ -102,8 +106,8 @@ def loop():
         "mask": mask_jpeg,
         "inference_ms": round(inference_ms, 1),
         "fps": round(fps, 1),
-        "obstacle": round(float(mask.mean()), 3),
-        "free": [round(v, 3) for v in free_space(mask)],
+        "coverage": {k: round(v, 3) for k, v in coverage(cmap, classes).items()},
+        "free": [round(v, 3) for v in free_space(cmap)],
     })
 
 

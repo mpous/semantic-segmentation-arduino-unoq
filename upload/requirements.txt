@@ -1,0 +1,4 @@
+ai-edge-litert
+flask>=3
+numpy
+opencv-python-headless
